@@ -22,7 +22,7 @@ import axios from "axios";
 import type { Order } from "../store/Slice/orderSlice";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_BACKEND_URL || "http://localhost:8080/",
+  baseURL: import.meta.env.VITE_BACKEND_URL,
   headers: {
     "Content-Type": "application/json",
   },
