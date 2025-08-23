@@ -135,7 +135,7 @@ const DonutChart: React.FC = () => {
   };
 
   const options: ChartOptions<'doughnut'> = {
-    responsive: true,
+    responsive: false,
     plugins: {
       legend: {
         display: true,
