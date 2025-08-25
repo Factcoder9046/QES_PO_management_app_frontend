@@ -276,7 +276,7 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
       <motion.div
         initial={{ y: 40, opacity: 0 }}
         animate={{ y: 0, opacity: 1, transition: { duration: 0.3 } }}
-        className="bg-white dark:bg-zinc-800 xl:w-8/12 w-11/12 lg:w-8/12 max-h-11/12 rounded-lg p-5 my-10 no-scrollbar overflow-y-scroll border border-black"
+        className="bg-white dark:bg-zinc-800 xl:w-8/12 w-11/12 lg:w-8/12 max-h-11/12 rounded-lg p-5 my-10 border border-black"
       >
         <div className="flex justify-between items-center w-full ">
           <h1 className="text-black text-center w-full dark:text-white font-bold  lg:text-lg xl:text-lg text-sm mb-5 uppercase">
