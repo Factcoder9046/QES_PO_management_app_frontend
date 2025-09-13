@@ -122,7 +122,7 @@ export const handleDownload = (order: any) => {
     doc.setFontSize(10); // Decreased font size for address
     const addressText = String(order.address || "___");
     // Calculate address width to ensure it doesn't overlap PO heading area
-    const maxAddressWidth = pageWidth / 2 - sideMargin - 5; // Half page width minus sideMargin and some padding
+    const maxAddressWidth = pageWidth / 2 - sideMargin - 8; // Half page width minus sideMargin and some padding
     const addressLines = doc.splitTextToSize(addressText, maxAddressWidth);
     doc.text("Address:", leftColumnX, leftColumnY);
     doc.text(addressLines, leftColumnX + doc.getTextWidth("Address: "), leftColumnY);
