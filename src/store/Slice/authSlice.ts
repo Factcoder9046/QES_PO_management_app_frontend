@@ -17,7 +17,7 @@ interface UserData {
   password: string;
   userType: string;
   profilePicture?: string;
-  employeeId?:string;
+  employeeId?: string;
 }
 
 interface AuthState {
@@ -126,7 +126,10 @@ const authSlice = createSlice({
       })
       .addCase(login.fulfilled, (state, action) => {
         state.status = "succeeded";
-        state.user = action.payload.user;
+        state.user = {
+          ...action.payload.user,
+          _id: action.payload.user._id || action.payload.user.id,
+        };
         state.token = action.payload.token;
         state.error = null;
       })
@@ -147,7 +150,7 @@ const authSlice = createSlice({
         state.status = "failed";
         state.error = action.payload as string;
       })
-     
+
   },
 });
 

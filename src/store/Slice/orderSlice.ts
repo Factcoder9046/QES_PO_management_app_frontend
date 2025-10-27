@@ -14,6 +14,7 @@ import {
   getRejectedPOCount,
   getLastPONumber
 } from '../../utils/api';
+import axios from 'axios';
 
 export interface Order {
   _id?: string;
@@ -471,6 +472,20 @@ const orderSlice = createSlice({
       });
   },
 });
+
+
+
+export const deleteProductFromOrderAsync = createAsyncThunk(
+  "orders/deleteProductFromOrder",
+  async ({ orderId, productId }: { orderId: string; productId: string }, { rejectWithValue }) => {
+    try {
+      const res = await axios.delete(`/api/orders/${orderId}/products/${productId}`);
+      return res.data; // contains updated order
+    } catch (err: any) {
+      return rejectWithValue(err.response?.data || err.message);
+    }
+  }
+);
 
 export const { resetOrders, clearMessages } = orderSlice.actions;
 export default orderSlice.reducer;

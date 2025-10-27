@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
-import { getNonApprovalPOs } from '../../utils/api';
-import { formatDate } from '../User/components/UserEditPO';
-import { BeatLoader } from 'react-spinners';
-import { useDispatch } from 'react-redux';
-import { updateOrderAsync, type Order } from '../../store/Slice/orderSlice';
-import { toast } from 'react-toastify';
+import { useEffect, useState } from "react";
+import { getNonApprovalPOs } from "../../utils/api";
+import { formatDate } from "../User/components/UserEditPO";
+import { BeatLoader } from "react-spinners";
+import { useDispatch } from "react-redux";
+import { IoEyeOutline } from "react-icons/io5";
+import { updateOrderAsync, type Order } from "../../store/Slice/orderSlice";
+import { toast } from "react-toastify";
 
 const SubadminApprovePO = () => {
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrders] = useState<any[]>([]);
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const limit = 10;
@@ -15,40 +16,56 @@ const SubadminApprovePO = () => {
   const [confirmMarkAsCompleted, setConfirmMarkAsCompleted] = useState(false);
   const [selectedOrder, setsSelectedOrder] = useState<Order | null>(null);
 
+  // VIEW Modal state & handler
+  const [viewModalOpen, setViewModalOpen] = useState(false);
+  const [viewOrder, setViewOrder] = useState<Order | null>(null);
+
   const dispatch = useDispatch();
+
+  const handleViewDetails = (order: any) => {
+    setViewOrder(order);
+    setViewModalOpen(true);
+  };
 
   const handlePrev = () => setPage((prev) => Math.max(prev - 1, 1));
   const handleNext = () => setPage((prev) => Math.min(prev + 1, totalPages));
   const handlePageClick = (num: number) => setPage(num);
 
-  const handleSubmit = async () => {
-    if (!selectedOrder) {
-      toast.error("Invalid order selected", {
-        position: "top-right",
-        autoClose: 3000,
-      });
-      return;
-    }
+ const handleSubmit = async () => {
+  if (!selectedOrder) {
+    toast.error("Invalid order selected", {
+      position: "top-right",
+      autoClose: 3000,
+    });
+    return;
+  }
 
-    try {
-      // Create the payload by spreading the entire selectedOrder object
-      // and then overwriting the 'status' field.
-      const payload = {
-        ...selectedOrder,
-        status: "completed",
-      };
+  try {
+    const payload = {
+      ...selectedOrder,
+      status: "completed",
+    };
 
-      await dispatch(updateOrderAsync({ orderId: selectedOrder._id, payload }) as any);
-      setConfirmMarkAsCompleted(false);
-      toast.success("Order status Marked as Completed!");
-      setsSelectedOrder(null);
-    } catch (error: any) {
-      toast.error(error || "Failed to update status", {
-        position: "top-right",
-        autoClose: 3000,
-      });
-    }
-  };
+    await dispatch(
+      updateOrderAsync({ orderId: selectedOrder._id, payload }) as any
+    );
+
+    // ✅ Remove the completed order from UI
+    setOrders((prev) =>
+      prev.filter((order: any) => order._id !== selectedOrder._id)
+    );
+
+    setConfirmMarkAsCompleted(false);
+    toast.success("Order Marked as Completed!");
+    setsSelectedOrder(null);
+  } catch (error: any) {
+    toast.error(error || "Failed to update status", {
+      position: "top-right",
+      autoClose: 3000,
+    });
+  }
+};
+
 
   useEffect(() => {
     const loadOrders = async () => {
@@ -57,18 +74,20 @@ const SubadminApprovePO = () => {
         const { orders, pagination } = await getNonApprovalPOs(page, limit);
         setOrders(orders);
         setTotalPages(pagination.totalPages);
-        setLaoding(false);
       } catch (error) {
         console.log(error, "Error fetching orders........");
+      } finally {
         setLaoding(false);
       }
     };
     loadOrders();
-  }, [page, selectedOrder]);
+  }, [page]);
 
   return (
-    <div className='flex flex-col gap-6 justify-start items-center size-full'>
-      <h1 className='text-2xl font-bold'>PO Approvals</h1>
+    <div className="flex flex-col gap-6 justify-start items-center size-full">
+      <h1 className="text-2xl font-bold">PO Approvals</h1>
+
+      {/* Confirm Modal */}
       {confirmMarkAsCompleted && (
         <div className="fixed inset-0 flex items-center justify-center p-4 backdrop-filter backdrop-blur-md z-10">
           <div className="bg-green-100 p-6 rounded-lg shadow-xl max-w-sm w-full">
@@ -76,7 +95,8 @@ const SubadminApprovePO = () => {
               Confirm Completed
             </h3>
             <p className="mb-4 text-gray-700 font-semibold">
-              Are you sure you want to mark this PO as <span className='text-green-500 font-bold'>Completed ?</span>
+              Are you sure you want to mark this PO as{" "}
+              <span className="text-green-500 font-bold">Completed ?</span>
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -99,58 +119,84 @@ const SubadminApprovePO = () => {
         </div>
       )}
 
-      {laoding === false
-        ?
+      {laoding ? (
+        <BeatLoader />
+      ) : (
         <>
           {/* Desktop Table */}
-          <div className='w-full hidden lg:table'>
-            <table className='w-full mb-6'>
-              <thead className='bg-gray-200 text-black font-bold'>
-                <tr className='bg-white dark:bg-zinc-900 dark:text-white'>
-                  <td className='py-2 uppercase text-start px-2'>Order Number</td>
-                  <td className='py-2 uppercase text-center px-2'>Generated By</td>
-                  <td className='py-2 uppercase text-center px-2'>Creation Date</td>
-                  <td className='py-2 uppercase text-center px-2'>Dispatch Date</td>
-                  <td className='py-2 uppercase text-center px-2'>Status</td>
-                  <td className='py-2 uppercase text-end px-2'>Action</td>
+          <div className="w-full hidden lg:table">
+            <table className="w-full mb-6">
+              <thead className="bg-gray-200 text-black font-bold">
+                <tr className="bg-white dark:bg-zinc-900 dark:text-white">
+                  <td className="py-2 uppercase text-start px-2">
+                    Order Number
+                  </td>
+                  <td className="py-2 uppercase text-center px-2">
+                    Generated By
+                  </td>
+                  <td className="py-2 uppercase text-center px-2">
+                    Creation Date
+                  </td>
+                  <td className="py-2 uppercase text-center px-2">
+                    Dispatch Date
+                  </td>
+                  <td className="py-2 uppercase text-center px-2">Status</td>
+                  <td className="py-2 uppercase text-end px-2">Action</td>
                 </tr>
               </thead>
               <tbody>
                 {orders.map((order: any, index: number) => (
-                  <tr key={index} className='odd:bg-gray-100 even:bg-white dark:odd:bg-zinc-800 dark:even:bg-zinc-900 hover:bg-gray-200'>
-                    {order.status === "pending" || order.status === "delayed" ?
-                      <>
-                        <td className='py-2 text-start px-2 text-blue-500 font-semibold'>{order.orderNumber}</td>
-                        <td className='py-2 text-center px-2 capitalize font-bold flex flex-col '>
-                          <span>{order.generatedBy.username}</span>
-                          <span className='text-xs font-light'>{order.generatedBy.employeeId}</span>
-                        </td>
-                        <td className='py-2 text-center px-2 font-semibold text-gray-600 dark:text-white'>
-                          {order.orderdate ? formatDate(order.orderDate) : formatDate(order.createdAt)}
-                        </td>
-                        <td className='text-center font-semibold text-gray-600 dark:text-white'>{order.estimatedDispatchDate.split('T')[0]}</td>
-                        <td className='py-2 text-center px-2'>
-                          <span
-                            className={`font-semibold uppercase text-xs tracking-wider rounded-full px-2 py-1
-                  ${order.status === "completed" && "bg-green-100 text-green-600"}
-                  ${order.status === "pending" && "bg-yellow-100 text-yellow-600"}
-                  ${order.status === "delayed" && "bg-orange-100 text-orange-600"}
-                  ${order.status === "rejected" && "bg-red-100 text-red-600"}
-                  `}>
-                            {order.status}
-                          </span>
-                        </td>
-                        
-                        <td className='py-2 text-end px-2'>
-                          <button
-                            onClick={() => {
-                              setConfirmMarkAsCompleted(true);
-                              setsSelectedOrder(order);
-                            }}
-                            className='bg-green-500 px-2 py-1 text-white font-semibold rounded-lg cursor-pointer hover:bg-green-600 duration-300'>Mark as Completed</button>
-                        </td>
-                      </> : ''
-                    }
+                  <tr
+                    key={index}
+                    className="odd:bg-gray-100 even:bg-white dark:odd:bg-zinc-800 dark:even:bg-zinc-900 hover:bg-gray-200"
+                  >
+                    <td className="py-2 text-start px-2 text-blue-500 font-semibold">
+                      {order.orderNumber}
+                    </td>
+                    <td className="py-2 text-center px-2 capitalize font-bold flex flex-col ">
+                      <span>{order.generatedBy.username}</span>
+                      <span className="text-xs font-light">
+                        {order.generatedBy.employeeId}
+                      </span>
+                    </td>
+                    <td className="py-2 text-center px-2 font-semibold text-gray-600 dark:text-white">
+                      {order.orderDate
+                        ? formatDate(order.orderDate)
+                        : formatDate(order.createdAt)}
+                    </td>
+                    <td className="text-center font-semibold text-gray-600 dark:text-white">
+                      {order.estimatedDispatchDate?.split("T")[0]}
+                    </td>
+                    <td className="py-2 text-center px-2">
+                      <span
+                        className={`font-semibold uppercase text-xs tracking-wider rounded-full px-2 py-1
+                          ${order.status === "completed" && "bg-green-100 text-green-600"}
+                          ${order.status === "pending" && "bg-yellow-100 text-yellow-600"}
+                          ${order.status === "delayed" && "bg-orange-100 text-orange-600"}
+                          ${order.status === "rejected" && "bg-red-100 text-red-600"}
+                        `}
+                      >
+                        {order.status}
+                      </span>
+                    </td>
+                    <td className="py-2 text-end px-2 flex justify-end items-center gap-3">
+                      <IoEyeOutline
+                        onClick={() => handleViewDetails(order)}
+                        className="hover:bg-blue-800 p-1 rounded-sm hover:text-white duration-200 cursor-pointer text-2xl"
+                        title="View details"
+                      />
+                      {order.status !== "completed" && (
+                        <button
+                          onClick={() => {
+                            setConfirmMarkAsCompleted(true);
+                            setsSelectedOrder(order);
+                          }}
+                          className="bg-green-500 px-2 py-1 text-white font-semibold rounded-lg cursor-pointer hover:bg-green-600 duration-300"
+                        >
+                          Mark as Completed
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -158,87 +204,211 @@ const SubadminApprovePO = () => {
           </div>
 
           {/* Mobile Cards */}
-          <div className='w-full flex flex-col gap-4 lg:hidden'>
-            {orders.map((order: any, index: number) => (
-              // Only render the card if the status is "pending" or "delayed"
-              (order.status === "pending" || order.status === "delayed") && (
-                <div key={index} className='bg-white dark:bg-zinc-800 shadow-md rounded-lg p-4 flex flex-col gap-2'>
-                  <div className='flex justify-between'>
-                    <span className='font-semibold'>Order Number:</span>
-                    <span className='text-end text-blue-500 font-semibold'>{order.orderNumber}</span>
+          <div className="w-full flex flex-col gap-4 lg:hidden">
+            {orders.map(
+              (order: any, index: number) => (
+                <div
+                  key={index}
+                  className="bg-white dark:bg-zinc-800 shadow-md rounded-lg p-4 flex flex-col gap-2"
+                >
+                  <div className="flex justify-between">
+                    <span className="font-semibold">Order Number:</span>
+                    <span className="text-end text-blue-500 font-semibold">
+                      {order.orderNumber}
+                    </span>
                   </div>
-                  <div className='flex justify-between'>
-                    <span className='font-semibold'>Generated By:</span>
-                    <span className='text-end capitalize font-bold'>{order.generatedBy.username}</span>
+                  <div className="flex justify-between">
+                    <span className="font-semibold">Generated By:</span>
+                    <span className="text-end capitalize font-bold">
+                      {order.generatedBy.username}
+                    </span>
                   </div>
-                  <div className='flex justify-between'>
-                    <span className='font-semibold'>Creation Date:</span>
-                    <span className='text-end font-semibold text-gray-600 dark:text-white'>{order.orderdate ? formatDate(order.orderDate) : formatDate(order.createdAt)}</span>
+                  <div className="flex justify-between">
+                    <span className="font-semibold">Creation Date:</span>
+                    <span className="text-end font-semibold text-gray-600 dark:text-white">
+                      {order.orderDate
+                        ? formatDate(order.orderDate)
+                        : formatDate(order.createdAt)}
+                    </span>
                   </div>
-                  <div className='flex justify-between'>
-                    <span className='font-semibold'>Status:</span>
+                  <div className="flex justify-between">
+                    <span className="font-semibold">Status:</span>
                     <span
                       className={`font-semibold uppercase text-xs tracking-wider rounded-full px-2 py-1
                         ${order.status === "completed" && "bg-green-100 text-green-600"}
                         ${order.status === "pending" && "bg-yellow-100 text-yellow-600"}
                         ${order.status === "delayed" && "bg-orange-100 text-orange-600"}
                         ${order.status === "rejected" && "bg-red-100 text-red-600"}
-                      `}>
+                      `}
+                    >
                       {order.status}
                     </span>
                   </div>
-                  <div className='flex justify-between'>
-                    <span className='font-semibold'>Dispatch Date:</span>
-                    <span className='text-end font-semibold text-gray-600 dark:text-white'>{order.estimatedDispatchDate.split('T')[0]}</span>
+                  <div className="flex justify-between">
+                    <span className="font-semibold">Dispatch Date:</span>
+                    <span className="text-end font-semibold text-gray-600 dark:text-white">
+                      {order.estimatedDispatchDate?.split("T")[0]}
+                    </span>
                   </div>
-                  <div className='flex justify-end'>
-                    <button
-                      onClick={() => {
-                        setConfirmMarkAsCompleted(true);
-                        setsSelectedOrder(order);
-                      }}
-                      className='bg-green-500 px-3 py-1 text-white font-semibold rounded-lg mt-2 hover:bg-green-600 duration-300'
-                    >
-                      Mark as Completed
-                    </button>
+                  <div className="flex justify-end items-center gap-2">
+                    <IoEyeOutline
+                      onClick={() => handleViewDetails(order)}
+                      className="hover:bg-blue-800 p-1 rounded-sm hover:text-white duration-200 cursor-pointer text-2xl"
+                      title="View details"
+                    />
+                    {order.status !== "completed" && (
+                      <button
+                        onClick={() => {
+                          setConfirmMarkAsCompleted(true);
+                          setsSelectedOrder(order);
+                        }}
+                        className="bg-green-500 px-3 py-1 text-white font-semibold rounded-lg mt-2 hover:bg-green-600 duration-300"
+                      >
+                        Mark as Completed
+                      </button>
+                    )}
                   </div>
                 </div>
               )
-            ))}
+            )}
           </div>
 
-          {/* Pagination Controls */}
+          {/* Pagination */}
           <div className="flex justify-center items-center gap-2 pb-10">
             <button
               onClick={handlePrev}
               disabled={page === 1}
-              className='px-3 py-1 bg-gray-300 dark:bg-zinc-900 disabled:opacity-50 rounded'
+              className="px-3 py-1 bg-gray-300 dark:bg-zinc-900 disabled:opacity-50 rounded"
             >
               Prev
             </button>
-            {[...Array(totalPages)].map((_, idx) => {
-              const pageNum = idx + 1;
-              return (
-                <button
-                  key={pageNum}
-                  onClick={() => handlePageClick(pageNum)}
-                  className={`px-3 py-1 rounded ${page === pageNum ? 'bg-blue-500 text-white' : 'bg-gray-200 dark:bg-zinc-900'}`}
-                >
-                  {pageNum}
-                </button>
-              );
-            })}
+            {Array.from({ length: totalPages }, (_, idx) => idx + 1)
+              .filter((p) => p === 1 || p === totalPages || (p >= page - 1 && p <= page + 1))
+              .map((p, i, arr) => {
+                const prevPage = arr[i - 1];
+                return (
+                  <span key={p} className="flex items-center gap-2">
+                    {prevPage && p - prevPage > 1 && <span className="px-2">...</span>}
+                    <button
+                      onClick={() => handlePageClick(p)}
+                      className={`px-3 py-1 rounded ${
+                        page === p ? "bg-blue-500 text-white" : "bg-gray-200 dark:bg-zinc-900"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  </span>
+                );
+              })}
             <button
               onClick={handleNext}
               disabled={page === totalPages}
-              className='px-3 py-1 bg-gray-300 dark:bg-zinc-900 disabled:opacity-50 rounded'
+              className="px-3 py-1 bg-gray-300 dark:bg-zinc-900 disabled:opacity-50 rounded"
             >
               Next
             </button>
           </div>
         </>
-        : <BeatLoader />
-      }
+      )}
+
+      {/* ---------- View Details Modal ---------- */}
+      {viewModalOpen && viewOrder && (
+        <div className="fixed inset-0 flex items-center justify-center p-4 bg-black bg-opacity-50 z-50">
+          <div className="bg-white dark:bg-zinc-800 text-black dark:text-white p-6 rounded-lg shadow-lg w-full max-w-3xl overflow-auto max-h-[90vh]">
+            <div className="flex justify-between items-start mb-4">
+              <h2 className="text-xl font-bold">PO Details</h2>
+              <button
+                onClick={() => {
+                  setViewModalOpen(false);
+                  setViewOrder(null);
+                }}
+                className="text-xl font-bold px-2 py-1 rounded hover:bg-gray-200 dark:hover:bg-zinc-700"
+                aria-label="Close details"
+              >
+                &times;
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p>
+                  <strong>Order Number:</strong> {viewOrder.orderNumber}
+                </p>
+                <p>
+                  <strong>Generated By:</strong> {viewOrder.generatedBy?.username}
+                </p>
+                <p>
+                  <strong>Employee ID:</strong> {viewOrder.generatedBy?.employeeId}
+                </p>
+                <p>
+                  <strong>Status:</strong>{" "}
+                  <span className="uppercase font-semibold">{viewOrder.status}</span>
+                </p>
+              </div>
+              <div>
+                <p>
+                  <strong>Order Date:</strong>{" "}
+                  {formatDate(viewOrder.orderDate || viewOrder.createdAt)}
+                </p>
+                <p>
+                  <strong>Dispatch Date:</strong>{" "}
+                  {viewOrder.estimatedDispatchDate
+                    ? viewOrder.estimatedDispatchDate.split("T")[0]
+                    : "N/A"}
+                </p>
+                <p>
+                  <strong>Contact:</strong> {viewOrder.contact || "N/A"}
+                </p>
+                <p>
+                  <strong>Company:</strong> {viewOrder.companyName || "N/A"}
+                </p>
+              </div>
+            </div>
+
+            {/* Products list */}
+            {viewOrder.products && viewOrder.products.length > 0 && (
+              <>
+                <h3 className="mt-4 font-bold">Products</h3>
+                <div className="mt-2 border rounded">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100 text-left">
+                      <tr>
+                        <th className="px-3 py-2">Name</th>
+                        <th className="px-3 py-2">Qty</th>
+                        <th className="px-3 py-2">Price</th>
+                        <th className="px-3 py-2">Remark</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewOrder.products.map((p: any, i: number) => (
+                        <tr key={i} className="border-t">
+                          <td className="px-3 py-2">{p.name}</td>
+                          <td className="px-3 py-2">{p.quantity}</td>
+                          <td className="px-3 py-2">{p.price}</td>
+                          <td className="px-3 py-2">{p.remark || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+
+            <div className="flex justify-end mt-4">
+              <button
+                onClick={() => {
+                  setViewModalOpen(false);
+                  setViewOrder(null);
+                }}
+                className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ---------- End View Details Modal ---------- */}
     </div>
   );
 };

@@ -32,6 +32,7 @@ const Tasks = () => {
     taskType: "",
     taskDeadline: "",
     description: "",
+    urgent: false,
     assignedUsers: [{ id: Date.now().toString(), primaryUserId: "", secondaryUserId: "", username: "", employeeId: "" }],
   });
   const [formError, setFormError] = useState<string | null>(null);
@@ -172,6 +173,7 @@ const Tasks = () => {
       description: taskData.description,
       taskType: taskData.taskType,
       taskDeadline: taskData.taskDeadline || undefined,
+      urgent: taskData.urgent,
       assignedUsers: taskData.assignedUsers
         .map((user) => {
           const selectedUser = userData.find((dUser) => dUser._id === user.primaryUserId);
@@ -203,11 +205,10 @@ const Tasks = () => {
   };
   // Handler to mark a task as completed
   const handleMarkAsCompleted = async (taskId: string, currentStatus: string) => {
-    const newStatus = currentStatus !== "completed"; // true if marking as completed, false otherwise
+    const newStatus = currentStatus === "completed" ? "pending" : "completed";
     try {
       await dispatch(updateTaskStatus({ taskId, status: newStatus })).unwrap();
       toast.success("Task status updated");
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       toast.error("Failed to update task status");
     }
@@ -349,22 +350,35 @@ const Tasks = () => {
               >
                 Task Type
               </label>
-              <select
-                id="taskType"
-                name="taskType"
-                className="block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm dark:bg-zinc-700 dark:border-zinc-600 dark:text-white dark:focus:border-blue-400"
+
+              <input
+                list="taskTypeOptions"
+                id="taskType"   // 👈 yahi key use ho rahi hai setTaskData me
+                className="block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-md shadow-sm 
+               focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm 
+               dark:bg-zinc-700 dark:border-zinc-600 dark:text-white dark:focus:border-blue-400"
                 value={taskData.taskType}
-                onChange={handleTaskInputChange}
+                onChange={(e) =>
+                  handleTaskInputChange({
+                    target: {
+                      id: "taskType",   // 👈 ab id diya hai
+                      value: e.target.value,
+                    },
+                  })
+                }
+                placeholder="Select or type task type"
                 required
-              >
-                <option value="">Select task type</option>
-                <option value="installation">Installation</option>
-                <option value="maintenance">Maintenance</option>
-                <option value="calibration">Calibration</option>
-                <option value="repair">Repair</option>
-                <option value="inspection">Inspection</option>
-              </select>
+              />
+
+              <datalist id="taskTypeOptions">
+                <option value="installation" />
+                <option value="maintenance" />
+                <option value="calibration" />
+                <option value="repair" />
+                <option value="inspection" />
+              </datalist>
             </div>
+
 
             {/* Task Deadline */}
             <div>
@@ -466,6 +480,23 @@ const Tasks = () => {
               ))}
             </div>
 
+            {/* Urgent chekbox */}
+
+            <div className="flex items-center mb-4">
+              <input
+                type="checkbox"
+                id="urgent"
+                checked={taskData.urgent}
+                onChange={(e) =>
+                  setTaskData((prev) => ({ ...prev, urgent: e.target.checked }))
+                }
+                className="h-4 w-4 text-red-600 focus:ring-red-500 border-gray-300 rounded"
+              />
+              <label htmlFor="urgent" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                URGENT
+              </label>
+            </div>
+
             {/* Description */}
             <div>
               <label
@@ -537,14 +568,17 @@ const Tasks = () => {
               {tasks.map((task: any) => (
                 <div
                   key={task._id}
-                  className={`bg-gray-50 dark:bg-zinc-800 p-4 rounded-lg shadow-sm border border-gray-200 dark:border-zinc-700 flex flex-col ${task.status === "completed"
-                    ? "opacity-70 border-green-400 dark:border-green-600"
-                    : ""
-                    }`}
+                  className={`bg-gray-50 dark:bg-zinc-800 p-4 rounded-lg shadow-sm border flex flex-col
+      ${task.status === "completed" ? "opacity-70 border-green-400 dark:border-green-600" : ""}
+      ${task.markStatus ? "ring-2 ring-green-500" : ""}   // ✅ user ne complete kiya ho to highlight
+    `}
                 >
+
                   <div className="flex justify-between items-start mb-2">
                     <h3 className="text-xl font-bold text-gray-900 dark:text-white mr-4">
                       {task.title}
+
+
                     </h3>
                     <span
                       className={`font-semibold capitalize px-2 py-0.5 rounded-full text-xs flex-shrink-0 ${getStatusColor(
@@ -553,6 +587,10 @@ const Tasks = () => {
                     >
                       {task.status}
                     </span>
+
+
+
+
                   </div>
 
                   <div className="flex justify-between items-center text-sm text-gray-600 dark:text-gray-300 mb-3">
@@ -570,6 +608,8 @@ const Tasks = () => {
                         {task.poId.orderNumber}
                       </div>
                     )}
+
+
                     <div className="flex items-center">
                       <span className="font-semibold text-gray-700 dark:text-gray-200 mr-1">
                         Created:
@@ -584,7 +624,10 @@ const Tasks = () => {
                         })
                         : "N/A"}
                     </div>
+
                   </div>
+
+
 
                   <div className="flex justify-between items-center text-sm text-gray-600 dark:text-gray-300 mb-3">
                     <div className="flex items-center">
@@ -627,6 +670,11 @@ const Tasks = () => {
                     <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
                       {task.description || "No description provided"}
                     </p>
+                    {task.markStatus && (
+                      <span className="text-green-600 text-lg" title="User completed this task">
+                        ✅
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center justify-end pt-2 border-t border-gray-200 dark:border-zinc-700">

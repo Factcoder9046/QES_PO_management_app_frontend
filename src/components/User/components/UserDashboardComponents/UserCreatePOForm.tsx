@@ -6,7 +6,6 @@ import {
   clearMessages,
   createOrderAsync,
   fetchLastPONumberAsync,
-  fetchOrdersAsync,
   fetchPendingPOCountAsync,
   fetchTotalPOCountAsync,
 } from "../../../../store/Slice/orderSlice";
@@ -39,6 +38,7 @@ type OrderFormData = {
   orderThrough: {
     username: string;
     employeeId: string;
+    orderVia: string[];
   };
   contactNumber: string;
   products: Product[];
@@ -46,6 +46,9 @@ type OrderFormData = {
     username: string;
     employeeId: string;
   };
+  department: string[];
+  isdeleted: boolean;
+  deletedAt: null;
   estimatedDispatchDate?: string;
 };
 
@@ -98,6 +101,7 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
     return months[date.getMonth()];
   };
 
+  // initialize form data (generatedBy empty initially — populated when user is ready)
   const [formData, setFormData] = useState<OrderFormData>({
     orderNumber: "",
     fullOrderNumber: "",
@@ -108,15 +112,34 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
     gstNumber: "",
     address: "",
     zipCode: "",
-    orderThrough: { username: "", employeeId: "" },
-    generatedBy: {
-      username: user?.username || "",
-      employeeId: user?.employeeId || "Not Available",
+    orderThrough: {
+      username: "",
+      employeeId: "",
+      orderVia: [] as string[]
     },
+    generatedBy: { username: "", employeeId: "" },
     contactNumber: "",
     products: [{ id: 1, name: "", quantity: 1, price: 0, remark: "" }],
+    department: [],
+    isdeleted: false,
+    deletedAt: null,
     estimatedDispatchDate: "",
   });
+
+
+  // populate generatedBy once user is available (prevents undefined being sent)
+  useEffect(() => {
+    if (user) {
+      setFormData((prev) => ({
+        ...prev,
+        generatedBy: {
+          username: user.username,
+          employeeId: user.employeeId,
+        },
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   // Set default order number when lastPONumber is fetched
   useEffect(() => {
@@ -130,7 +153,7 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
         fullOrderNumber: `${newPONumber}/QESPL/${currentMonthAbbr}/${currentYearShort}`,
       }));
     }
-  }, [lastPONumber]);
+  }, [lastPONumber]); // newPONumber derived from lastPONumber
 
   // Update fullOrderNumber whenever orderNumber changes
   useEffect(() => {
@@ -143,6 +166,7 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
         fullOrderNumber: `${prev.orderNumber}/QESPL/${currentMonthAbbr}/${currentYearShort}`,
       }));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData.orderNumber]);
 
   useEffect(() => {
@@ -181,6 +205,16 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
+  };
+
+  const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { value, checked } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      department: checked
+        ? [...prev.department, value]
+        : prev.department.filter((d) => d !== value),
+    }));
   };
 
   const handleProductChange = (
@@ -232,6 +266,23 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
       return;
     }
 
+    //     if (!formData.orderThrough.orderVia || formData.orderThrough.orderVia.length === 0) {
+    //   toast.error("Please select at least one option in Order Via");
+    //   setLoading(false);
+    //   return;
+    // }
+
+    // Optional: ensure at least one department selected (uncomment if backend requires)
+    if (!formData.department.length) {
+      toast.error("Please select at least one Department.");
+      setLoading(false);
+      return;
+    }
+
+    // Debug logs — remove in production if you want
+    console.log("FormData department:", formData.department);
+    console.log("FormData generatedBy:", formData.generatedBy);
+
     const apiOrderData = {
       clientName: formData.clientName,
       companyName: formData.companyName,
@@ -247,8 +298,7 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
       orderDate: formData.orderDate,
       invoiceNumber: formData.invoiceNumber,
       status: "pending",
-      department: "default",
-      isdeleted: false,
+      department: formData.department, // send array (as requested)
       deletedAt: null,
     };
 
@@ -264,9 +314,10 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
     }
   };
 
-  if (!user) return <div>Please log in to access this form.</div>;
+  if (!user) {
+    return <div>Please log in to access this form.</div>;
+  }
 
-  console.log(user.employeeId, "User data in UserCreatePOForm");
   const handleClose = () => {
     setShowForm(false);
   };
@@ -351,26 +402,6 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   Order Date <span className="text-red-500 m-2">*</span>
                 </label>
               </div>
-
-              {/* Invoice No. Input */}
-              {/* <div className="relative z-0 w-full mb-5 group">
-                <input
-                  type="text"
-                  name="invoiceNumber"
-                  id="invoice_number"
-                  className="block pt-5 px-0 w-full lg:text-lg xl:text-lg text-sm text-gray-900 bg-transparent border-0 border-b-2 border-gray-300 appearance-none dark:text-white dark:border-gray-600 dark:focus:border-white focus:outline-none focus:ring-0 focus:border-[#0A2975] peer"
-                  placeholder=" "
-                  // required
-                  value={formData.invoiceNumber}
-                  onChange={handleInputChange}
-                />
-                <label
-                  htmlFor="invoice_number"
-                  className="absolute lg:text-lg xl:text-lg text-sm text-black dark:text-gray-400 duration-300 transform scale-75 top-0 left-0 origin-[0] peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-2.5 peer-focus:scale-75 peer-focus:-translate-y-4 peer-focus:text-[#0A2975] peer-focus:dark:text-white"
-                >
-                  Invoice Number (Optional)
-                </label>
-              </div> */}
             </div>
           </section>
 
@@ -380,6 +411,7 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
               Order Through
             </h1>
             <div className="border-2 rounded-lg p-5 shadow-lg">
+              {/* Name */}
               <div className="relative z-0 w-full mb-5 group">
                 <input
                   type="text"
@@ -395,10 +427,11 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   htmlFor="order_through_username"
                   className="absolute lg:text-lg xl:text-lg text-sm text-black dark:text-gray-400 duration-300 transform scale-75 top-0 left-0 origin-[0] peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-2.5 peer-focus:scale-75 peer-focus:-translate-y-4 peer-focus:text-[#0A2975] peer-focus:dark:text-white"
                 >
-                  Name{" "}
-                  <span className="text-red-500 m-2">*</span>
+                  Name <span className="text-red-500 m-2">*</span>
                 </label>
               </div>
+
+              {/* Employee ID */}
               <div className="relative z-0 w-full mb-5 group">
                 <input
                   type="text"
@@ -406,7 +439,6 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   id="order_through_employee_id"
                   className="block pt-5 px-0 w-full lg:text-lg xl:text-lg text-sm text-gray-900 bg-transparent border-0 border-b-2 border-gray-300 appearance-none dark:text-white dark:border-gray-600 dark:focus:border-white focus:outline-none focus:ring-0 focus:border-[#0A2975] peer"
                   placeholder=" "
-                  // required
                   value={formData.orderThrough.employeeId}
                   onChange={handleInputChange}
                 />
@@ -417,8 +449,52 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   Order Through Employee ID (Optional)
                 </label>
               </div>
+
+
+              {/* Order Via Multiple Select */}
+              <div className="relative z-0 w-full mb-5 group">
+                <select
+                  name="orderThrough.orderVia"
+                  id="order_through_via"
+                  multiple
+
+                  value={formData.orderThrough.orderVia}
+                  onChange={(e) => {
+                    const selectedValues = Array.from(
+                      e.target.selectedOptions,
+                      (option) => option.value
+                    );
+                    setFormData((prev) => ({
+                      ...prev,
+                      orderThrough: {
+                        ...prev.orderThrough,
+                        orderVia: selectedValues,
+                      },
+                    }));
+                  }}
+                  className="block pt-5 px-0 w-full lg:text-lg xl:text-lg text-sm text-gray-900 bg-transparent border-0 border-b-2 border-gray-300 appearance-none dark:text-white dark:border-gray-600 dark:focus:border-white focus:outline-none focus:ring-0 focus:border-[#0A2975] peer"
+                >
+
+                  <option value="Indiamart">Indiamart</option>
+                  <option value="Trade India">Trade India</option>
+                  <option value="Self Approach">Self Approach</option>
+                  <option value="End Customer">End Customer</option>
+                  <option value="References">References</option>
+                  <option value="Re-Seller">Re-Seller</option>
+                  <option value="Client-Reseller">Client-Reseller</option>
+                </select>
+
+                <label
+                  htmlFor="order_through_via"
+                  className="absolute lg:text-lg xl:text-lg text-sm text-black dark:text-gray-400 duration-300 transform scale-75 top-0 left-0 origin-[0] peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-2.5 peer-focus:scale-75 peer-focus:-translate-y-4 peer-focus:text-[#0A2975] peer-focus:dark:text-white"
+                >
+                  Order Via <span className="text-red-500 m-2"></span>
+                </label>
+              </div>
+
             </div>
           </section>
+
 
           {/* Section 3 : Company Details */}
           <section className="flex flex-col gap-2 lg:text-lg xl:text-lg text-sm">
@@ -454,7 +530,6 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   id="Company_Name"
                   className="block pt-5 px-0 w-full lg:text-lg xl:text-lg text-sm text-gray-900 bg-transparent border-0 border-b-2 border-gray-300 appearance-none dark:text-white dark:border-gray-600 dark:focus:border-white focus:outline-none focus:ring-0 focus:border-[#0A2975] peer"
                   placeholder=" "
-                  // required
                   value={formData.companyName}
                   onChange={handleInputChange}
                 />
@@ -462,9 +537,10 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   htmlFor="Company_Name"
                   className="absolute lg:text-lg xl:text-lg text-sm text-black dark:text-gray-400 duration-300 transform scale-75 top-0 left-0 origin-[0] peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-2.5 peer-focus:scale-75 peer-focus:-translate-y-4 peer-focus:text-[#0A2975] peer-focus:dark:text-white"
                 >
-                  Company Name (Optional)
+                  Company Name  <span className="text-red-500 m-2">*</span>
                 </label>
               </div>
+
               {/* GST Number Input */}
               <div className="relative z-0 w-full mb-5 group">
                 <input
@@ -473,7 +549,6 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   id="GST_Number"
                   className="block pt-5 px-0 w-full lg:text-lg xl:text-lg text-sm text-gray-900 bg-transparent border-0 border-b-2 border-gray-300 appearance-none dark:text-white dark:border-gray-600 dark:focus:border-white focus:outline-none focus:ring-0 focus:border-[#0A2975] peer"
                   placeholder=" "
-                  // required
                   value={formData.gstNumber}
                   onChange={handleInputChange}
                 />
@@ -484,6 +559,7 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   GST Number (Optional)
                 </label>
               </div>
+
               {/* Address Input */}
               <div className="relative z-0 w-full mb-5 group">
                 <input
@@ -492,7 +568,6 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   id="Address"
                   className="block pt-5 px-0 w-full lg:text-lg xl:text-lg text-sm text-gray-900 bg-transparent border-0 border-b-2 border-gray-300 appearance-none dark:text-white dark:border-gray-600 dark:focus:border-white focus:outline-none focus:ring-0 focus:border-[#0A2975] peer"
                   placeholder=" "
-                  // required
                   value={formData.address}
                   onChange={handleInputChange}
                 />
@@ -503,6 +578,7 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   Address (Optional)
                 </label>
               </div>
+
               {/* Zipcode Input */}
               <div className="relative z-0 w-full mb-5 group">
                 <input
@@ -511,7 +587,6 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   id="ZIP_Code"
                   className="block pt-5 px-0 w-full lg:text-lg xl:text-lg text-sm text-gray-900 bg-transparent border-0 border-b-2 border-gray-300 appearance-none dark:text-white dark:border-gray-600 dark:focus:border-white focus:outline-none focus:ring-0 focus:border-[#0A2975] peer"
                   placeholder=" "
-                  // required
                   value={formData.zipCode}
                   onChange={handleInputChange}
                 />
@@ -522,6 +597,7 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   ZIP Code (Optional)
                 </label>
               </div>
+
               {/* Contact Number Input */}
               <div className="relative z-0 w-full mb-5 group">
                 <input
@@ -530,7 +606,6 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   id="Contact_Number"
                   className="block pt-5 px-0 w-full lg:text-lg xl:text-lg text-sm text-gray-900 bg-transparent border-0 border-b-2 border-gray-300 appearance-none dark:text-white dark:border-gray-600 dark:focus:border-white focus:outline-none focus:ring-0 focus:border-[#0A2975] peer"
                   placeholder=" "
-                  // required
                   value={formData.contactNumber}
                   onChange={handleInputChange}
                 />
@@ -600,7 +675,7 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                       className="block pt-5 px-0 w-full lg:text-lg xl:text-lg text-sm text-gray-900 bg-transparent border-0 border-b-2 border-gray-300 appearance-none dark:text-white dark:border-gray-600 dark:focus:border-white focus:outline-none focus:ring-0 focus:border-[#0A2975] peer"
                       placeholder=" "
                       required
-                      value={product.quantity.toString()} // Convert number to string for input value
+                      value={product.quantity.toString()}
                       onChange={(e) => handleProductChange(product.id, e)}
                     />
                     <label
@@ -619,7 +694,7 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                       className="block pt-5 px-0 w-full lg:text-lg xl:text-lg text-sm text-gray-900 bg-transparent border-0 border-b-2 border-gray-300 appearance-none dark:text-white dark:border-gray-600 dark:focus:border-white focus:outline-none focus:ring-0 focus:border-[#0A2975] peer"
                       placeholder=" "
                       required
-                      value={product.price.toString()} // Convert number to string for input value
+                      value={product.price.toString()}
                       onChange={(e) => handleProductChange(product.id, e)}
                     />
                     <label
@@ -634,12 +709,10 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                 {/* Remark Input */}
                 <div className="relative z-0 w-full mb-5 group">
                   <textarea
-                    // type="text"
                     name="remark"
                     id={`Remark_${index}`}
                     className="block pt-5 px-0 w-full lg:text-lg xl:text-lg text-sm text-gray-900 bg-transparent border-0 border-b-2 border-gray-300 appearance-none dark:text-white dark:border-gray-600 dark:focus:border-white focus:outline-none focus:ring-0 focus:border-[#0A2975] peer"
                     placeholder=" "
-                    // required
                     value={product.remark}
                     onChange={(e) => handleProductChange(product.id, e)}
                   />
@@ -651,7 +724,8 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                   </label>
                 </div>
 
-                {/* Dispatch Date Input */}
+
+
 
                 {/* Delete Button */}
                 {formData.products.length > 1 && (
@@ -665,12 +739,50 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                 )}
               </div>
             ))}
+
+            {/* Depaerment section add */}
+            <h1 className="text-start font-bold text-xl text-blue-500 mb-4 uppercase">
+              Department Details <span className="text-red-500">*</span>
+            </h1>
+            <div className="flex justify-between w-full">
+              <label>
+                <input
+                  type="checkbox"
+                  value="R&D"
+                  checked={formData.department.includes("R&D")}
+                  onChange={handleCheckboxChange}
+                />
+                R&D
+              </label>
+
+              <label>
+                <input
+                  type="checkbox"
+                  value="Production"
+                  checked={formData.department.includes("Production")}
+                  onChange={handleCheckboxChange}
+                />
+                Production
+              </label>
+
+              <label>
+                <input
+                  type="checkbox"
+                  value="Accounts"
+                  checked={formData.department.includes("Accounts")}
+                  onChange={handleCheckboxChange}
+                />
+                Accounts
+              </label>
+
+            </div>
+
             <div className="relative z-0 w-full mb-5 group ">
               <input
                 type="date"
                 name="estimatedDispatchDate"
                 id={"estimatedDispatchDate"}
-                className="block pt-5 px-0 w-fit= lg:text-lg xl:text-lg text-sm text-blue-800 font-bold bg-transparent border-0 border-b-2 border-gray-300 appearance-none dark:text-white dark:border-gray-600 dark:focus:border-white focus:outline-none focus:ring-0 focus:border-[#0A2975] peer "
+                className="block pt-5 px-0 w-fit lg:text-lg xl:text-lg text-sm text-blue-800 font-bold bg-transparent border-0 border-b-2 border-gray-300 appearance-none dark:text-white dark:border-gray-600 dark:focus:border-white focus:outline-none focus:ring-0 focus:border-[#0A2975] peer"
                 required
                 value={formData.estimatedDispatchDate}
                 onChange={handleInputChange}
@@ -683,6 +795,7 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                 <span className="text-red-500 m-2">*</span>
               </label>
             </div>
+
             {/* Add Product Button */}
             <div className="flex justify-between">
               <button
@@ -702,20 +815,17 @@ const UserCreatePOForm: React.FC<UserCreatePOFormProps> = ({
                     Submit
                   </button>
                   <button
-                    // type="submit"
                     onClick={handleClose}
                     className="text-end max-w-fit bg-red-400 text-white px-3 py-1 font-semibold lg:text-xl xl:text-xl text-sm rounded-md hover:bg-red-500 transition duration-300 cursor-pointer"
                   >
                     Cancel
                   </button>
-
                 </div>
               ) : (
                 <button
-                  // type="submit"
                   className="text-end max-w-fit bg-gray-400 text-white px-2 py-1 font-semibold lg:text-xl xl:text-xl text-sm rounded-md cursor-not-allowed"
                 >
-                  Submiting...
+                  Submitting...
                 </button>
               )}
             </div>

@@ -172,7 +172,7 @@ const DonutChart: React.FC = () => {
   return (
     <div className='w-full'>
       <h3 className='text-start font-semibold'>Total PO Status Distribution</h3>
-      <Doughnut style={{ width: '300px', height: '300px', margin: '0 auto' }} data={data} options={options} />
+      <Doughnut style={{ width: '300px', height: '300px', minHeight: '300px', maxHeight: '300px', minWidth: '300px', maxWidth: '300px', margin: '0 auto' }} data={data} options={options} />
     </div>
   );
 };

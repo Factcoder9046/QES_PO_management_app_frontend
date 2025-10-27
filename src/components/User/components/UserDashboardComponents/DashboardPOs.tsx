@@ -14,6 +14,7 @@ import { toast } from "react-toastify";
 import { softDeleteOrder } from "../../../../store/Slice/recycleBinSlice";
 import { formatDate } from "../UserEditPO";
 import { clearSearchResults, searchOrders } from "../../../../store/Slice/orderSearchSlice";
+import { getOrderViaBadge } from "../../../../utils/orderViaHelper";
 
 
 // --- INTERFACES: COPIED DIRECTLY FROM PODetails.tsx (po-details-updated Canvas) ---
@@ -38,6 +39,7 @@ interface orderThrough {
     employeeId: string;
 }
 
+// --- INTERFACES UPDATE---
 interface Order {
     _id: string;
     orderNumber: string;
@@ -59,7 +61,15 @@ interface Order {
     deletedAt?: string;
     formGeneratedBy?: string;
     orderDate: string;
+
+    // Modified to match the backend schema
+    orderThrough?: {
+        username: string;
+        employeeId: string;
+        orderVia?: string[]; // Array of strings
+    };
 }
+
 
 interface Pagination {
     currentPage: number;
@@ -118,6 +128,7 @@ const DashboardPOs = ({ refreshTrigger }: { refreshTrigger: boolean }) => {
     const { orders, loading, error, pagination } = useSelector(
         (state: RootState) => state.orders
     );
+    const [isFiltered, setIsFiltered] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [fromDate, setFromDate] = useState("");
     const [toDate, setToDate] = useState("");
@@ -126,6 +137,8 @@ const DashboardPOs = ({ refreshTrigger }: { refreshTrigger: boolean }) => {
     const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
     const rowsPerPage = 10;
     const [currentPage, setCurrentPage] = useState(1);
+    const [orderViaFilter, setOrderViaFilter] = useState("all");
+
 
     // Debounced search function to prevent excessive API calls
     // useCallback is used to memoize the debounced function.
@@ -137,23 +150,43 @@ const DashboardPOs = ({ refreshTrigger }: { refreshTrigger: boolean }) => {
     );
 
     useEffect(() => {
-        // This effect now sends all filters and pagination info to the API
-        // The search query is handled by the debounced function.
-        const params = {
-            page: currentPage,
-            limit: rowsPerPage,
-            status: statusFilter,
-            search: searchQuery,
-            fromDate,
-            toDate,
+        // determine if any filter is active
+        const activeFilters = (
+            (statusFilter && statusFilter !== "all") ||
+            (orderViaFilter && orderViaFilter !== "all") ||
+            (searchQuery && searchQuery.trim() !== "") ||
+            (fromDate && fromDate !== "") ||
+            (toDate && toDate !== "")
+        );
+
+        setIsFiltered(Boolean(activeFilters));
+
+        // Build params
+        const params: any = {
+            search: searchQuery ? searchQuery : undefined,
+            status: statusFilter && statusFilter !== "all" ? statusFilter : undefined,
+            orderVia: orderViaFilter && orderViaFilter !== "all" ? orderViaFilter : undefined,
+            fromDate: fromDate ? fromDate : undefined,
+            toDate: toDate ? toDate : undefined,
         };
+
+        // If not filtered, use pagination (page + limit)
+        if (!activeFilters) {
+            params.page = currentPage;
+            params.limit = rowsPerPage;
+        } else {
+            // When filtered: request all matching orders.
+            // Use a large limit (adjust if your backend expects something else).
+            params.page = 1;
+            params.limit = 10000;
+        }
+
         debouncedFetch(params);
 
-        // Clean up the debounced function on component unmount
         return () => {
             debouncedFetch.cancel();
         };
-    }, [dispatch, currentPage, statusFilter, searchQuery, fromDate, toDate, refreshTrigger, debouncedFetch]);
+    }, [dispatch, currentPage, statusFilter, searchQuery, fromDate, toDate, orderViaFilter, refreshTrigger, debouncedFetch]);
 
     const handleStatusFilterChange = (
         e: React.ChangeEvent<HTMLSelectElement>
@@ -205,18 +238,58 @@ const DashboardPOs = ({ refreshTrigger }: { refreshTrigger: boolean }) => {
     };
 
     // Client-side filtering as a temporary measure
-    const filteredOrders = statusFilter === 'all'
-        ? orders
-        : orders.filter(order => order.status === statusFilter);
+    const filteredOrders = orders.filter((order) => {
+        if (statusFilter !== "all" && order.status !== statusFilter) return false;
+        if (orderViaFilter !== "all" && !order.orderThrough?.orderVia?.includes(orderViaFilter)) return false;
 
-    const paginatedOrders = filteredOrders;
-    const totalFilteredPages = pagination?.totalPages || 1;
+        if (
+            searchQuery &&
+            !(
+                order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                order.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                order.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                order.generatedBy?.employeeId?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                order.generatedBy?.username?.toLowerCase().includes(searchQuery.toLowerCase())
+            )
+        ) {
+            return false;
+        }
+        if (fromDate && new Date(order.orderDate || order.createdAt) < new Date(fromDate)) return false;
+        if (toDate && new Date(order.orderDate || order.createdAt) > new Date(toDate)) return false;
+        return true;
+    });
+
+   const sortedOrders = [...filteredOrders].sort((a, b) => {
+  if (!searchQuery) return 0;
+  const query = searchQuery.toLowerCase();
+
+  const aNum = a.orderNumber?.toLowerCase() || "";
+  const bNum = b.orderNumber?.toLowerCase() || "";
+
+  // exact match priority
+  const aExact = aNum === query;
+  const bExact = bNum === query;
+  if (aExact && !bExact) return -1;
+  if (!aExact && bExact) return 1;
+
+  // prefix match priority
+  const aStarts = aNum.startsWith(query);
+  const bStarts = bNum.startsWith(query);
+  if (aStarts && !bStarts) return -1;
+  if (!aStarts && bStarts) return 1;
+
+  return 0;
+});
+
+    const paginatedOrders = isFiltered ? sortedOrders : orders;
+
+    // const totalFilteredPages = pagination?.totalPages || 1;
 
 
-    const USERS_PER_PAGE = 5;
-    const fetchOrders = () => {
-        dispatch(fetchOrdersAsync({ page: currentPage, limit: USERS_PER_PAGE }));
-    };
+    // const USERS_PER_PAGE = 10;
+    // const fetchOrders = () => {
+    //     dispatch(fetchOrdersAsync({ page: currentPage, limit: USERS_PER_PAGE }));
+    // };
     const confirmDelete = () => {
         if (userToDelete) {
             dispatch(softDeleteOrder(userToDelete))
@@ -226,11 +299,11 @@ const DashboardPOs = ({ refreshTrigger }: { refreshTrigger: boolean }) => {
                         toastId: "po-deleted",
                     });
                     fetchOrders(); // ✅ Fetch fresh data after deletion
-                    dispatch(fetchTotalPOCountAsync())
-                    dispatch(fetchCompletedPOCountAsync())
-                    dispatch(fetchPendingPOCountAsync())
-                    dispatch(fetchDelayedPOCountAsync())
-                    dispatch(fetchRejectedPOCountAsync())
+                    dispatch(fetchTotalPOCountAsync());
+                    dispatch(fetchCompletedPOCountAsync());
+                    dispatch(fetchPendingPOCountAsync());
+                    dispatch(fetchDelayedPOCountAsync());
+                    dispatch(fetchRejectedPOCountAsync());
                 })
                 .catch((err: any) => {
                     toast.error(`Unexpected error: ${err}`, {
@@ -403,6 +476,24 @@ const DashboardPOs = ({ refreshTrigger }: { refreshTrigger: boolean }) => {
                         <option value="delayed">Delayed</option>
                         <option value="rejected">Rejected</option>
                     </select>
+                    <select
+                        value={orderViaFilter}
+                        onChange={(e) => {
+                            setOrderViaFilter(e.target.value);
+                            setCurrentPage(1);
+                        }}
+                        className="w-full p-2 border border-gray-300 rounded-md text-gray-700 bg-white dark:bg-zinc-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#0A2975]"
+                    >
+                        <option value="all">All Order Via</option>
+                        <option value="Indiamart">Indiamart</option>
+                        <option value="Trade India">Trade India</option>
+                        <option value="Self Approach">Self Approach</option>
+                        <option value="End Customer">End Customer</option>
+                        <option value="References">References</option>
+                        <option value="Re-Seller">Re-Seller</option>
+                        <option value="Client-Reseller">Client-Reseller</option>
+                    </select>
+
                 </div>
             </div>
             <div className="w-full">
@@ -410,110 +501,152 @@ const DashboardPOs = ({ refreshTrigger }: { refreshTrigger: boolean }) => {
                 <>
                     {/* Desktop View: Standard Table */}
                     <div className="hidden lg:block">
-                        <table className="w-full text-xs mb-4">
-                            <thead>
-                                <tr className="bg-gray-200 dark:bg-zinc-950 text-xs">
-                                    <th className="p-2 text-xl text-start">PO Number</th>
-                                    <th className="p-2 text-xl text-start">Generated By</th>
-                                    <th className="p-2 text-xl text-start">Client</th>
-                                    <th className="p-2 text-xl">Order Date</th>
-                                    <th className="p-2 text-xl">Estimated Dispatch</th>
-                                    <th className="p-2 text-xl">Status</th>
-                                    <th className="p-2 text-xl">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {paginatedOrders.length > 0 ? (
-                                    paginatedOrders.map((data: any) => (
-                                        <tr
-                                            key={data._id}
-                                            className="border-b border-gray-200 dark:border-zinc-600 odd:bg-white dark:odd:bg-zinc-800 even:bg-gray-50 even:dark:bg-zinc-900"
-                                        >
-                                            <td className="text-start">
-                                                <span className="p-2 text-blue-800 dark:text-blue-400 font-bold hover:underline text-sm">
-                                                    {data.orderNumber}
-                                                </span>
-                                            </td>
-                                            <td className="p-2 flex items-center gap-3">
-                                                <div className="flex flex-col">
-                                                    <span className="text-start font-semibold text-sm uppercase">
-                                                        {data.generatedBy?.username ||
-                                                            "N/A"}
-                                                    </span>
-                                                    <span className="text-start">
-                                                        {data.generatedBy?.employeeId || "N/A"}
-                                                    </span>
-                                                </div>
-                                            </td>
-
-                                            <td className="lg:p-2 p-1 text-start">
-                                                <div className="flex flex-col items-start uppercase">
-                                                    <span className="font-semibold text-lg">{data.clientName}</span>
-                                                    <span>{data.companyName}</span>
-                                                </div></td>
-                                            <td className="lg:p-2 p-1 font-semibold text-sm">
-                                                {data.orderDate
-                                                    ? formatDate(data.orderDate?.split('T')[0])
-                                                    : formatDate(data.createdAt?.split('T')[0])}
-                                            </td>
-                                            <td className="lg:p-2 p-1 font-semibold text-sm">{formatDate(data.estimatedDispatchDate?.split('T')[0])}</td>
-                                            <td
-                                                className={`lg:p-2 p-1 ${data.status === "completed"
-                                                    ? "text-green-600"
-                                                    : data.status === "delayed"
-                                                        ? "text-orange-600"
-                                                        : data.status === "pending"
-                                                            ? "text-yellow-600"
-                                                            : "text-red-600"
-                                                    }`}
+                        {/* ✅ Scrollable wrapper only when filtered */}
+                        <div className={`${isFiltered ? "h-100 overflow-y-auto" : ""} w-full`}>
+                            <table className="w-full text-xs mb-4">
+                                <thead>
+                                    <tr className="bg-gray-200 dark:bg-zinc-950 text-xs">
+                                        <th className="p-2 text-xl text-start">PO Number</th>
+                                        <th className="p-2 text-xl text-start">Generated By</th>
+                                        <th className="p-2 text-xl text-start">Client</th>
+                                        <th className="p-2 text-xl">Order Date</th>
+                                        <th className="p-2 text-xl">Estimated Dispatch</th>
+                                        <th className="p-2 text-xl">Status</th>
+                                        <th className="p-2 text-xl">Order Via</th>
+                                        <th className="p-2 text-xl">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {paginatedOrders.length > 0 ? (
+                                        paginatedOrders.map((data: any) => (
+                                            <tr
+                                                key={data._id}
+                                                className="border-b border-gray-200 dark:border-zinc-600 odd:bg-white dark:odd:bg-zinc-800 even:bg-gray-50 even:dark:bg-zinc-900"
                                             >
-                                                <span
-                                                    className={`
-                          ${data.status === "pending" && 'bg-yellow-200 px-2 py-1 uppercase rounded-full font-bold'}
-                          ${data.status === "completed" && 'bg-green-200 px-2 py-1 uppercase rounded-full font-bold'}
-                          ${data.status === "delayed" && 'bg-orange-200 px-2 py-1 uppercase rounded-full font-bold'}
-                          ${data.status === "rejected" && 'bg-red-200 px-2 py-1 uppercase rounded-full font-bold'}
-                          `}
+                                                <td className="text-start">
+                                                    <span className="p-2 text-blue-800 dark:text-blue-400 font-bold hover:underline text-sm">
+                                                        {data.orderNumber}
+                                                    </span>
+                                                </td>
+                                                <td className="p-2 flex items-center gap-3">
+                                                    <div className="flex flex-col">
+                                                        <span className="text-start font-semibold text-sm uppercase">
+                                                            {data.generatedBy?.username || "N/A"}
+                                                        </span>
+                                                        <span className="text-start">
+                                                            {data.generatedBy?.employeeId || "N/A"}
+                                                        </span>
+                                                    </div>
+                                                </td>
 
-                                                >{data.status
-                                                    ? data.status.charAt(0).toUpperCase() +
-                                                    data.status.slice(1)
-                                                    : "N/A"}</span>
-                                            </td>
-                                            <td className="lg:p-2 p-1 lg:gap-3 gap-1 lg:text-3xl text-lg flex justify-center items-center pr-5">
-                                                <IoEyeOutline
-                                                    onClick={() => handleViewPODetails(data)}
-                                                    className="hover:bg-blue-800 p-1 rounded-sm hover:text-white duration-200 cursor-pointer"
-                                                />
-                                                <BsDownload
-                                                    onClick={() => handleDownload(data)}
-                                                    className="hover:bg-blue-800 p-1 rounded-sm hover:text-white duration-200 cursor-pointer"
-                                                />
-                                                {(user.userType === "admin" || user.userType === "subadmin") && (
-                                                    <RiDeleteBinLine
-                                                        onClick={() => {
-                                                            setUserToDelete(data._id);
-                                                            setShowAlert(true);
-                                                        }}
-                                                        className="text-red-500 hover:bg-blue-800 p-1 rounded-sm duration-200 cursor-pointer"
+                                                <td className="lg:p-2 p-1 text-start">
+                                                    <div className="flex flex-col items-start uppercase">
+                                                        <span className="font-semibold text-lg">
+                                                            {data.clientName}
+                                                        </span>
+                                                        <span>{data.companyName}</span>
+                                                    </div>
+                                                </td>
+
+                                                <td className="lg:p-2 p-1 font-semibold text-sm">
+                                                    {data.orderDate
+                                                        ? formatDate(data.orderDate?.split("T")[0])
+                                                        : formatDate(data.createdAt?.split("T")[0])}
+                                                </td>
+                                                <td className="lg:p-2 p-1 font-semibold text-sm">
+                                                    {formatDate(data.estimatedDispatchDate?.split("T")[0])}
+                                                </td>
+
+                                                <td
+                                                    className={`lg:p-2 p-1 ${data.status === "completed"
+                                                        ? "text-green-600"
+                                                        : data.status === "delayed"
+                                                            ? "text-orange-600"
+                                                            : data.status === "pending"
+                                                                ? "text-yellow-600"
+                                                                : "text-red-600"
+                                                        }`}
+                                                >
+                                                    <span
+                                                        className={`
+                    ${data.status === "pending" &&
+                                                            "bg-yellow-200 px-2 py-1 uppercase rounded-full font-bold"
+                                                            }
+                    ${data.status === "completed" &&
+                                                            "bg-green-200 px-2 py-1 uppercase rounded-full font-bold"
+                                                            }
+                    ${data.status === "delayed" &&
+                                                            "bg-orange-200 px-2 py-1 uppercase rounded-full font-bold"
+                                                            }
+                    ${data.status === "rejected" &&
+                                                            "bg-red-200 px-2 py-1 uppercase rounded-full font-bold"
+                                                            }
+                  `}
+                                                    >
+                                                        {data.status
+                                                            ? data.status.charAt(0).toUpperCase() +
+                                                            data.status.slice(1)
+                                                            : "N/A"}
+                                                    </span>
+                                                </td>
+
+                                                {/* ✅ Order Via Column */}
+                                                <td className="lg:p-2 p-1 text-center font-semibold text-sm">
+                                                    {data.orderThrough?.orderVia?.length > 0 ? (
+                                                        data.orderThrough.orderVia.map((via: string, idx: number) => {
+                                                            const { label, className } = getOrderViaBadge(via);
+                                                            return (
+                                                                <span
+                                                                    key={idx}
+                                                                    className={`px-2 py-1 rounded-full text-xs font-bold mr-1 ${className}`}
+                                                                >
+                                                                    {label}
+                                                                </span>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        <span className="text-gray-400">N/A</span>
+                                                    )}
+                                                </td>
+
+                                                <td className="lg:p-2 p-1 lg:gap-3 gap-1 lg:text-3xl text-lg flex justify-center items-center pr-5">
+                                                    <IoEyeOutline
+                                                        onClick={() => handleViewPODetails(data)}
+                                                        className="hover:bg-blue-800 p-1 rounded-sm hover:text-white duration-200 cursor-pointer"
                                                     />
-                                                )}
+                                                    <BsDownload
+                                                        onClick={() => handleDownload(data)}
+                                                        className="hover:bg-blue-800 p-1 rounded-sm hover:text-white duration-200 cursor-pointer"
+                                                    />
+                                                    {(user.userType === "admin" || user.userType === "subadmin") && (
+                                                        <RiDeleteBinLine
+                                                            onClick={() => {
+                                                                setUserToDelete(data._id);
+                                                                setShowAlert(true);
+                                                            }}
+                                                            className="text-red-500 hover:bg-blue-800 p-1 rounded-sm duration-200 cursor-pointer"
+                                                        />
+                                                    )}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    ) : (
+                                        <tr>
+                                            <td
+                                                colSpan={7}
+                                                className="text-center p-4 text-gray-500"
+                                            >
+                                                No orders found for the current filters.
                                             </td>
                                         </tr>
-                                    ))
-                                ) : (
-                                    <tr>
-                                        <td colSpan={7} className="text-center p-4 text-gray-500">
-                                            No orders found for the current filters.
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
                     {/* Mobile View: Stacked Table */}
-                    <div className="lg:hidden space-y-4">
+                    <div className={`lg:hidden space-y-4 ${isFiltered ? "h-100 overflow-y-auto" : ""}`}>
                         {paginatedOrders.length > 0 ? (
                             paginatedOrders.map((data: any) => (
                                 <div
@@ -547,7 +680,9 @@ const DashboardPOs = ({ refreshTrigger }: { refreshTrigger: boolean }) => {
                                         <span className="w-1/3 font-semibold text-gray-600 dark:text-gray-300 text-start">
                                             Dispatch Date:
                                         </span>
-                                        <span className="w-2/3 text-left">{data.estimatedDispatchDate}</span>
+                                        <span className="w-2/3 text-left">
+                                            {data.estimatedDispatchDate}
+                                        </span>
                                     </div>
 
                                     <div className="flex border-b p-2">
@@ -563,8 +698,8 @@ const DashboardPOs = ({ refreshTrigger }: { refreshTrigger: boolean }) => {
                                         </span>
                                         <span className="w-2/3 text-left">
                                             {data.orderDate
-                                                ? data.orderDate?.split('T')[0]
-                                                : data.createdAt?.split('T')[0]}
+                                                ? data.orderDate?.split("T")[0]
+                                                : data.createdAt?.split("T")[0]}
                                         </span>
                                     </div>
 
@@ -574,27 +709,46 @@ const DashboardPOs = ({ refreshTrigger }: { refreshTrigger: boolean }) => {
                                         </span>
                                         <span
                                             className={`w-2/3 font-semibold text-left ${data.status === "completed"
-                                                ? "text-green-500"
-                                                : data.status === "delayed"
-                                                    ? "text-orange-500"
-                                                    : data.status === "pending"
-                                                        ? "text-yellow-500"
-                                                        : "text-red-500"
+                                                    ? "text-green-500"
+                                                    : data.status === "delayed"
+                                                        ? "text-orange-500"
+                                                        : data.status === "pending"
+                                                            ? "text-yellow-500"
+                                                            : "text-red-500"
                                                 }`}
                                         >
                                             <span
                                                 className={`
-                        ${data.status === "pending" && 'bg-yellow-200 px-2 py-1 uppercase rounded-full font-bold'}
-                        ${data.status === "completed" && 'bg-green-200 px-2 py-1 uppercase rounded-full font-bold'}
-                        ${data.status === "delayed" && 'bg-orange-200 px-2 py-1 uppercase rounded-full font-bold'}
-                        ${data.status === "rejected" && 'bg-red-200 px-2 py-1 uppercase rounded-full font-bold'}
-                        `}
-
-                                            >{data.status
-                                                ? data.status.charAt(0).toUpperCase() +
-                                                data.status.slice(1)
-                                                : "N/A"}</span>
+                ${data.status === "pending" && "bg-yellow-200 px-2 py-1 uppercase rounded-full font-bold"}
+                ${data.status === "completed" && "bg-green-200 px-2 py-1 uppercase rounded-full font-bold"}
+                ${data.status === "delayed" && "bg-orange-200 px-2 py-1 uppercase rounded-full font-bold"}
+                ${data.status === "rejected" && "bg-red-200 px-2 py-1 uppercase rounded-full font-bold"}
+              `}
+                                            >
+                                                {data.status
+                                                    ? data.status.charAt(0).toUpperCase() + data.status.slice(1)
+                                                    : "N/A"}
+                                            </span>
                                         </span>
+                                    </div>
+
+                                    {/* ✅ Order Via Column */}
+                                    <div className="lg:p-2 p-1 text-center font-semibold text-sm">
+                                        {data.orderThrough?.orderVia?.length > 0 ? (
+                                            data.orderThrough.orderVia.map((via: string, idx: number) => {
+                                                const { label, className } = getOrderViaBadge(via);
+                                                return (
+                                                    <span
+                                                        key={idx}
+                                                        className={`px-2 py-1 rounded-full text-xs font-bold mr-1 ${className}`}
+                                                    >
+                                                        {label}
+                                                    </span>
+                                                );
+                                            })
+                                        ) : (
+                                            <span className="text-gray-400">N/A</span>
+                                        )}
                                     </div>
 
                                     <div className="flex justify-end gap-4 p-2 text-xl">
@@ -606,7 +760,7 @@ const DashboardPOs = ({ refreshTrigger }: { refreshTrigger: boolean }) => {
                                             onClick={() => handleDownload(data)}
                                             className="hover:bg-blue-800 p-1 rounded-sm hover:text-white duration-200 cursor-pointer"
                                         />
-                                        {user.userType === "admin" || user.userType === "subadmin" && (
+                                        {(user.userType === "admin" || user.userType === "subadmin") && (
                                             <RiDeleteBinLine
                                                 onClick={() => {
                                                     setUserToDelete(data._id);
@@ -627,8 +781,9 @@ const DashboardPOs = ({ refreshTrigger }: { refreshTrigger: boolean }) => {
                 </>
 
                 {/* ⏮️ Pagination */}
-                {pagination?.totalPages > 1 && (
+                {!isFiltered && pagination?.totalPages > 1 && (
                     <div className="flex justify-center items-center gap-2 mt-4">
+                        {/* Prev Button */}
                         <button
                             onClick={() => changePage(currentPage - 1)}
                             disabled={currentPage === 1}
@@ -637,19 +792,37 @@ const DashboardPOs = ({ refreshTrigger }: { refreshTrigger: boolean }) => {
                             ←
                         </button>
 
-                        {[...Array(pagination.totalPages)].map((_, i) => (
-                            <button
-                                key={i}
-                                onClick={() => changePage(i + 1)}
-                                className={`px-3 py-1 rounded-full text-sm ${currentPage === i + 1
-                                    ? "bg-blue-600 text-white font-semibold"
-                                    : "bg-gray-100 dark:bg-[var(--theme-color)] hover:bg-blue-100"
-                                    }`}
-                            >
-                                {i + 1}
-                            </button>
-                        ))}
+                        {Array.from({ length: pagination.totalPages }, (_, i) => i + 1)
+                            .filter((p) => {
+                                // Always show 1, 2 and last 2
+                                if (p === 1 || p === 2 || p === pagination.totalPages || p === pagination.totalPages - 1) return true;
 
+                                // Always show current page
+                                if (p === currentPage) return true;
+
+                                return false;
+                            })
+                            .map((p, i, arr) => {
+                                const prevPage = arr[i - 1];
+                                return (
+                                    <span key={p} className="flex items-center gap-2">
+                                        {/* Show dots for skipped pages */}
+                                        {prevPage && p - prevPage > 1 && <span className="px-2">...</span>}
+
+                                        <button
+                                            onClick={() => changePage(p)}
+                                            className={`px-3 py-1 rounded-full text-sm ${currentPage === p
+                                                ? "bg-blue-600 text-white font-semibold"
+                                                : "bg-gray-100 dark:bg-[var(--theme-color)] hover:bg-blue-100"
+                                                }`}
+                                        >
+                                            {p}
+                                        </button>
+                                    </span>
+                                );
+                            })}
+
+                        {/* Next Button */}
                         <button
                             onClick={() => changePage(currentPage + 1)}
                             disabled={currentPage === pagination.totalPages}

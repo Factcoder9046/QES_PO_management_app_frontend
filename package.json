@@ -26,8 +26,8 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "mohdzafeer",
-        "repo": "QESPL_fron"
+        "owner": "Factcoder9046",
+        "repo": "QES_PO_management_app_frontend"
       }
     ]
   },

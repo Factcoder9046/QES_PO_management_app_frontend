@@ -284,6 +284,7 @@ export interface TaskCratePayload {
   taskType: string;
   status?: string;
   taskDeadline?: string;
+  urgent?: boolean;
   assignedUsers: { _id: string; username: string; email: string }[];
 }
 
@@ -665,6 +666,10 @@ export const getTasksByPO = async (poId: string) => {
 
 
 export const getAssignTask = async (userId: string) => {
- const response = await api.get(`/task/api/get-tasks-assigned-to-user/${userId}`, { withCredentials: true });
-  return response.data;
+  const response = await api.get(`/task/api/user/${userId}`, {
+    withCredentials: true,
+  });
+  return response.data.data;
 };
+
+
